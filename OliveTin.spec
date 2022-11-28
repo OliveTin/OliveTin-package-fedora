@@ -4,9 +4,10 @@
 # https://github.com/OliveTin/OliveTin
 %global goipath         github.com/OliveTin/OliveTin
 Version:                2022.11.14
-%global tag             2022.11.14
+%global tag             %{version}
 
 %gometa -f
+%global goname OliveTin
 
 %global common_description %{expand:
 OliveTin gives safe and simple access to predefined shell commands from a web
@@ -15,11 +16,9 @@ interface.}
 %global golicenses      LICENSE
 %global godocs          CODE_OF_CONDUCT.md README.md SECURITY.md
 
-Name:           OliveTin
+Name:           %{goname}
 Release:        %autorelease
-Summary:        Gives safe and simple access to predefined shell commands
-
-Patch0: systemd-unit-path.patch
+Summary:        Give safe and simple access to predefined shell commands from a web interface
 
 BuildRequires: systemd-rpm-macros
 BuildRequires: googleapis-devel 
@@ -39,51 +38,57 @@ Source:         %{gosource}
 
 %prep
 %goprep
+sed -i 's/local\///g' %{name}.service
+rm webui/.eslintrc.json
+rm webui/.stylelintrc.json
 
 %generate_buildrequires
 %go_generate_buildrequires
 
-sed -i 's/local\///g' OliveTin.service
-
 %build
 make protoc
-
 export LDFLAGS="-X main.version=%{version}%{dist} "
-%gobuild -o %{gobuilddir}/bin/$(basename $cmd) %{goipath}/cmd/OliveTin
+%gobuild -o %{gobuilddir}/bin/$(basename $cmd) %{goipath}/cmd/%{name}
 
 %install
 %gopkginstall
-install -m 0755 -vd                     %{buildroot}%{_bindir}
-install -m 0755 -vp %{gobuilddir}/bin/* %{buildroot}%{_bindir}/
+install -m 0755 -vd                             %{buildroot}%{_bindir}
+install -m 0755 -vp %{gobuilddir}/bin/*         %{buildroot}%{_bindir}/
 
-install -m 0644 -vD config.yaml         %{buildroot}/etc/OliveTin/config.yaml
+install -m 0644 -vD config.yaml                 %{buildroot}/%{_sysconfdir}/%{name}/config.yaml
+install -m 0644 -vD var/manpage/%{name}.1.gz    %{buildroot}%{_mandir}/man1/%{name}.1.gz
+install -m 0644 -vD %{name}.service             %{buildroot}/%{_unitdir}/%{name}.service
 
-install -m 0755 -vd                     %{buildroot}/usr/share/OliveTin/webui/
-
-# rpmlint does not like hidden files
-rm webui/.eslintrc.json
-rm webui/.stylelintrc.json
-
-cp -r webui %{buildroot}/usr/share/OliveTin/
-find %{buildroot}/usr/share/OliveTin/webui -type f -exec chmod 0644 {} \;
-
-install -m 0644 -vD var/manpage/OliveTin.1.gz %{buildroot}%{_mandir}/man1/OliveTin.1.gz
-
-install -m 0644 -vD OliveTin.service %{buildroot}/%{_unitdir}/OliveTin.service
+install -m 0755 -vd                             %{buildroot}/%{_datadir}/%{name}/webui
+for d in $(find webui -type d); do
+    install --mode 0755 -vd "$d" %{buildroot}%{_datadir}/%{name}/$d
+done
+for f in $(find webui -type f); do
+    install --mode 0644 -vp "$f" %{buildroot}%{_datadir}/%{name}/$f
+done
 
 %if %{with check}
 %check
 %gocheck
 %endif
 
+%post
+%systemd_post %{name}.service
+
+%preun
+%systemd_preun %{name}.service
+
+%postun
+%systemd_postun_with_restart %{name}.service
+
 %files
 %license LICENSE
 %doc CODE_OF_CONDUCT.md README.md SECURITY.md
-%{_bindir}/*
-%config(noreplace) /etc/OliveTin/config.yaml
-/usr/share/OliveTin/*
-/%{_mandir}/man1/OliveTin.1.gz
-/%{_unitdir}/OliveTin.service
+%{_bindir}/%{name}
+%config(noreplace) /%{_sysconfdir}/%{name}/config.yaml
+%{_datadir}/%{name}/webui
+%{_mandir}/man1/%{name}.1.gz
+%{_unitdir}/%{name}.service
 
 %gopkgfiles
 
